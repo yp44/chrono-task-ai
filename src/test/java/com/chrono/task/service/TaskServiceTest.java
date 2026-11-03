@@ -123,6 +123,34 @@ class TaskServiceTest {
     }
 
     @Test
+    void testFilterByDate() {
+        LocalDate day = LocalDate.of(2023, 1, 1);
+        Task worked = service.createTask("Buy Milk");
+        worked.setTime(day, java.time.Duration.ofMinutes(10));
+        Task other = service.createTask("Buy Bread");
+        other.setTime(day.plusDays(1), java.time.Duration.ofMinutes(10));
+        Task done = service.createTask("Done Task");
+        done.setTime(day, java.time.Duration.ofMinutes(10));
+        done.setStatus(com.chrono.task.model.TaskStatus.DONE);
+
+        // No date: same as before
+        assertEquals(3, service.filter("", true, null).size());
+
+        // Date only (done tasks shown)
+        assertEquals(List.of(worked, done), service.filter("", true, day));
+
+        // Combined with the "show completed" flag
+        assertEquals(List.of(worked), service.filter("", false, day));
+
+        // Combined with the text query
+        assertEquals(List.of(worked), service.filter("milk", true, day));
+        assertTrue(service.filter("bread", true, day).isEmpty());
+
+        // Day without any activity
+        assertTrue(service.filter("", true, day.plusDays(10)).isEmpty());
+    }
+
+    @Test
     void testSlackUrl() {
         Task t = service.createTask("Slack Task");
         service.updateTaskSlackUrl(t, "https://slack.com/archives/C12345");

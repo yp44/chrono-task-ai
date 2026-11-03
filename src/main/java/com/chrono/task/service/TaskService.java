@@ -1,6 +1,7 @@
 package com.chrono.task.service;
 
 import java.io.IOException;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
@@ -95,7 +96,18 @@ public class TaskService {
      * Filters tasks based on a query string against description, jiraUrl, or tags.
      */
     public List<Task> filter(String query, boolean showDoneTasks) {
+        return filter(query, showDoneTasks, null);
+    }
+
+    /**
+     * Same as {@link #filter(String, boolean)}, additionally keeping only the tasks worked on at {@code date}
+     * (see {@link Task#hasActivityOn(LocalDate)}) when {@code date} is not null.
+     */
+    public List<Task> filter(String query, boolean showDoneTasks, LocalDate date) {
         Stream<Task> stream = tasks.stream();
+        if (date != null) {
+            stream = stream.filter(t -> t.hasActivityOn(date));
+        }
         if (query != null && !query.trim().isBlank()) {
             String lowerQuery = query.toLowerCase();
             stream = stream.filter(t -> (t.getDescription() != null && t.getDescription().toLowerCase().contains(lowerQuery)) ||

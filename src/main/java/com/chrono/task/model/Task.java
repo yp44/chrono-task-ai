@@ -85,6 +85,20 @@ public class Task {
         return work != null ? work.getDuration() : Duration.ZERO;
     }
 
+    /**
+     * True if the task was worked on at the given date: more than 2 minutes tracked, or a non-blank daily note.
+     * Same rule as the History tab.
+     */
+    public boolean hasActivityOn(LocalDate date) {
+        TaskDailyWork work = taskHistory.get(date);
+        if (work == null) {
+            return false;
+        }
+        boolean longEnough = work.getDuration() != null && work.getDuration().compareTo(Duration.ofMinutes(2)) > 0;
+        boolean hasNote = work.getNote() != null && !work.getNote().isBlank();
+        return longEnough || hasNote;
+    }
+
     @JsonIgnore
     public Duration getDurationLast30Days() {
         LocalDate today = LocalDate.now();

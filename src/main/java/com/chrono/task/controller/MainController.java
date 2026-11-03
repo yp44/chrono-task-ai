@@ -69,6 +69,8 @@ public class MainController {
     @FXML
     private TextField filterField;
     @FXML
+    private DatePicker taskDateFilterPicker;
+    @FXML
     private javafx.scene.control.CheckBox showDoneTasksCheckbox;
     @FXML
     private ListView<Task> taskListView;
@@ -215,6 +217,7 @@ public class MainController {
         // Filter - listen to both filterField text changes and showDoneTasksCheckbox changes
         filterField.textProperty().addListener((_, _, newVal) -> applyFilters());
         showDoneTasksCheckbox.selectedProperty().addListener((_, _, newVal) -> applyFilters());
+        taskDateFilterPicker.valueProperty().addListener((_, _, _) -> applyFilters());
 
         // Apply initial filter to hide Done tasks by default
         applyFilters();
@@ -701,6 +704,11 @@ private void showPopup(String title, String message) {
     }
 
     @FXML
+    public void clearDateFilter() {
+        taskDateFilterPicker.setValue(null);
+    }
+
+    @FXML
     public void onAddTask() {
         int index = taskService.getTasks().size() + 1;
         String name = "New Task " + index;
@@ -976,14 +984,14 @@ private void showPopup(String title, String message) {
     }
 
     /**
-     * Apply both text filter and Done status filter to the task list
+     * Apply the text filter, the day filter and the Done status filter to the task list
      */
     private void applyFilters() {
         String filterText = filterField.getText();
         boolean showDoneTasks = showDoneTasksCheckbox.isSelected();
 
         // Start with all tasks or filtered tasks based on text
-        java.util.List<Task> filteredTasks = filteredTasks = taskService.filter(filterText, showDoneTasks);
+        java.util.List<Task> filteredTasks = taskService.filter(filterText, showDoneTasks, taskDateFilterPicker.getValue());
         taskListView.setItems(javafx.collections.FXCollections.observableArrayList(filteredTasks));
     }
 
@@ -1059,6 +1067,7 @@ private void showPopup(String title, String message) {
         if (!taskListView.getItems().contains(active)) {
             // Hidden by the text filter and/or the "show completed" checkbox (listeners re-apply filters)
             filterField.setText("");
+            taskDateFilterPicker.setValue(null);
             if (!taskListView.getItems().contains(active)) {
                 showDoneTasksCheckbox.setSelected(true);
             }
