@@ -29,6 +29,28 @@ class TaskTest {
     }
 
     @Test
+    void testHasActivityOn() {
+        Task task = new Task();
+        LocalDate day = LocalDate.of(2023, 1, 1);
+        assertFalse(task.hasActivityOn(day)); // no entry
+
+        task.setTime(day, Duration.ofMinutes(1));
+        assertFalse(task.hasActivityOn(day)); // too short
+        task.setTime(day, Duration.ofMinutes(2));
+        assertFalse(task.hasActivityOn(day)); // exactly 2 min: not strictly more
+        task.setTime(day, Duration.ofMinutes(3));
+        assertTrue(task.hasActivityOn(day));
+        assertFalse(task.hasActivityOn(day.plusDays(1))); // other day
+
+        LocalDate noteDay = LocalDate.of(2023, 1, 5);
+        task.setDailyNote(noteDay, "did stuff");
+        assertTrue(task.hasActivityOn(noteDay)); // note only
+        LocalDate blankNoteDay = LocalDate.of(2023, 1, 6);
+        task.setDailyNote(blankNoteDay, "  ");
+        assertFalse(task.hasActivityOn(blankNoteDay));
+    }
+
+    @Test
     void testTotalTimeMultiDays() {
         Task task = new Task();
         LocalDate d1 = LocalDate.of(2023, 1, 1);
