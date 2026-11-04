@@ -1,6 +1,8 @@
 package com.chrono.task.model;
 
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -28,6 +30,9 @@ public class Settings {
     private String uiTheme = "DARK";
 
     // Terminal panel (Ctrl+F12). Blank values mean "library default".
+    // Shells offered by the terminal panel's "+" menu; the first one is the default. Empty = system shell.
+    private List<TerminalShell> terminalShells = new ArrayList<>();
+    // Deprecated single shell, kept so old settings files still load; migrated into terminalShells on the fly.
     private String terminalShell = "";
     private String terminalStartDirectory = "";
     private String terminalTheme = "DARK";

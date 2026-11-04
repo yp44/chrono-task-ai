@@ -12,6 +12,7 @@
 <?import javafx.scene.control.SplitPane?>
 <?import javafx.scene.control.Tab?>
 <?import javafx.scene.control.TabPane?>
+<?import javafx.scene.control.TableView?>
 <?import javafx.scene.control.TextArea?>
 <?import javafx.scene.control.TextField?>
 <?import javafx.scene.control.ToggleButton?>
@@ -252,10 +253,23 @@
                                         <VBox spacing="10.0" styleClass="card">
                                             <children>
                                                 <Label text="Terminal (Ctrl+F12)" styleClass="section-title"/>
+                                                <HBox spacing="10.0" alignment="TOP_LEFT">
+                                                    <children>
+                                                        <Label text="Shells:" styleClass="field-label"/>
+                                                        <TableView fx:id="terminalShellsTable" editable="true" prefHeight="120.0"
+                                                                   HBox.hgrow="ALWAYS"/>
+                                                        <VBox spacing="5.0">
+                                                            <children>
+                                                                <Button mnemonicParsing="false" onAction="#onAddTerminalShell" text="Add"
+                                                                        maxWidth="1.7976931348623157E308"/>
+                                                                <Button mnemonicParsing="false" onAction="#onRemoveTerminalShell" text="Remove"
+                                                                        maxWidth="1.7976931348623157E308"/>
+                                                            </children>
+                                                        </VBox>
+                                                    </children>
+                                                </HBox>
                                                 <HBox spacing="10.0" alignment="CENTER_LEFT">
                                                     <children>
-                                                        <Label text="Shell:" styleClass="field-label"/>
-                                                        <TextField fx:id="terminalShellField" prefWidth="200.0" promptText="Default ($SHELL)"/>
                                                         <Label text="Start directory:" styleClass="field-label"/>
                                                         <TextField fx:id="terminalStartDirectoryField" HBox.hgrow="ALWAYS" promptText="Home directory"/>
                                                         <Button mnemonicParsing="false" onAction="#onBrowseTerminalStartDirectory" text="Browse..."/>

@@ -20,9 +20,12 @@ import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
 import javafx.scene.control.PasswordField;
 import javafx.scene.control.SelectionMode;
+import javafx.scene.control.TableColumn;
+import javafx.scene.control.TableView;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
 import javafx.scene.control.ToggleButton;
+import javafx.scene.control.cell.TextFieldTableCell;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.web.WebView;
@@ -33,6 +36,7 @@ import javafx.util.Duration;
 import com.chrono.task.model.Task;
 import com.chrono.task.model.TaskDailyWork;
 import com.chrono.task.model.TaskStatus;
+import com.chrono.task.model.TerminalShell;
 import com.chrono.task.persistence.SettingsStorageService;
 import com.chrono.task.service.JiraService.IssueInfo;
 import com.chrono.task.service.TaskService;
@@ -150,7 +154,7 @@ public class MainController {
     @FXML
     private javafx.scene.control.SplitPane mainSplitPane;
     @FXML
-    private TextField terminalShellField;
+    private TableView<TerminalShell> terminalShellsTable;
     @FXML
     private TextField terminalStartDirectoryField;
     @FXML
@@ -454,8 +458,8 @@ public class MainController {
         updatePreviewFill(ThemeManager.isDark());
         showEmptyPreview();
 
-        if (terminalShellField != null) {
-            terminalShellField.setText(settings.getTerminalShell());
+        if (terminalShellsTable != null) {
+            setupTerminalShellsTable();
             terminalStartDirectoryField.setText(settings.getTerminalStartDirectory());
             terminalThemeComboBox.getItems().setAll("DARK", "LIGHT");
             terminalThemeComboBox.setValue(settings.getTerminalTheme());
@@ -540,7 +544,21 @@ public class MainController {
             showPopup("Validation Error", "Invalid Terminal font size or scrollback: Must be a number.");
             return;
         }
-        settings.setTerminalShell(terminalShellField.getText());
+        java.util.List<TerminalShell> shells = new java.util.ArrayList<>();
+        for (TerminalShell shell : terminalShellsTable.getItems()) {
+            String name = shell.getName() == null ? "" : shell.getName().trim();
+            String command = shell.getCommand() == null ? "" : shell.getCommand().trim();
+            if (name.isEmpty() && command.isEmpty()) {
+                continue; // empty row: ignored
+            }
+            if (name.isEmpty() || command.isEmpty()) {
+                showPopup("Validation Error", "Each terminal shell needs a name and a command.");
+                return;
+            }
+            shells.add(new TerminalShell(name, command));
+        }
+        settings.setTerminalShells(shells);
+        settings.setTerminalShell(""); // legacy single shell, now migrated into the list
         settings.setTerminalStartDirectory(terminalStartDirectoryField.getText());
         settings.setTerminalTheme(terminalThemeComboBox.getValue());
         settings.setTerminalFontFamily(terminalFontComboBox.getValue());
@@ -577,6 +595,47 @@ public class MainController {
         java.io.File selectedDirectory = directoryChooser.showDialog(dataStoragePathField.getScene().getWindow());
         if (selectedDirectory != null) {
             dataStoragePathField.setText(selectedDirectory.getAbsolutePath());
+        }
+    }
+
+    /** Fills the editable Name / Command table from the settings (on copies: nothing changes until "Save"). */
+    private void setupTerminalShellsTable() {
+        if (terminalShellsTable.getColumns().isEmpty()) {
+            TableColumn<TerminalShell, String> nameColumn = new TableColumn<>("Name");
+            nameColumn.setCellValueFactory(cd -> new javafx.beans.property.SimpleStringProperty(cd.getValue().getName()));
+            nameColumn.setCellFactory(TextFieldTableCell.forTableColumn());
+            nameColumn.setOnEditCommit(e -> e.getRowValue().setName(e.getNewValue()));
+            nameColumn.setPrefWidth(150);
+
+            TableColumn<TerminalShell, String> commandColumn = new TableColumn<>("Command");
+            commandColumn.setCellValueFactory(cd -> new javafx.beans.property.SimpleStringProperty(cd.getValue().getCommand()));
+            commandColumn.setCellFactory(TextFieldTableCell.forTableColumn());
+            commandColumn.setOnEditCommit(e -> e.getRowValue().setCommand(e.getNewValue()));
+            commandColumn.setPrefWidth(350);
+
+            terminalShellsTable.getColumns().add(nameColumn);
+            terminalShellsTable.getColumns().add(commandColumn);
+            terminalShellsTable.setPlaceholder(new Label("No shell: the system shell ($SHELL) is used"));
+        }
+        java.util.List<TerminalShell> copies = TerminalPanel.shellEntries(settings).stream()
+                .map(s -> new TerminalShell(s.getName(), s.getCommand()))
+                .toList();
+        terminalShellsTable.setItems(javafx.collections.FXCollections.observableArrayList(copies));
+    }
+
+    @FXML
+    public void onAddTerminalShell() {
+        terminalShellsTable.getItems().add(new TerminalShell("New shell", ""));
+        int row = terminalShellsTable.getItems().size() - 1;
+        terminalShellsTable.getSelectionModel().select(row);
+        terminalShellsTable.edit(row, terminalShellsTable.getColumns().getFirst());
+    }
+
+    @FXML
+    public void onRemoveTerminalShell() {
+        TerminalShell selected = terminalShellsTable.getSelectionModel().getSelectedItem();
+        if (selected != null) {
+            terminalShellsTable.getItems().remove(selected);
         }
     }
 
