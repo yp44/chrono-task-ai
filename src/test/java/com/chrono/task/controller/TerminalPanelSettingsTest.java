@@ -1,12 +1,14 @@
 package com.chrono.task.controller;
 
 import com.chrono.task.model.Settings;
+import com.chrono.task.model.TerminalShell;
 import com.kodedu.terminalfx.TerminalLook;
 import com.kodedu.terminalfx.local.LocalShellSpec;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -14,7 +16,7 @@ class TerminalPanelSettingsTest {
 
     @Test
     void testDefaultShellSpec() {
-        LocalShellSpec spec = TerminalPanel.buildShellSpec(new Settings());
+        LocalShellSpec spec = TerminalPanel.buildShellSpec(new Settings(), null);
 
         assertArrayEquals(LocalShellSpec.defaultShell().command(), spec.command());
         assertEquals(Path.of(System.getProperty("user.home")), spec.directory());
@@ -23,10 +25,9 @@ class TerminalPanelSettingsTest {
     @Test
     void testCustomShellAndDirectory(@TempDir Path dir) {
         Settings settings = new Settings();
-        settings.setTerminalShell("  /bin/sh   -l ");
         settings.setTerminalStartDirectory(dir.toString());
 
-        LocalShellSpec spec = TerminalPanel.buildShellSpec(settings);
+        LocalShellSpec spec = TerminalPanel.buildShellSpec(settings, new TerminalShell("sh", "  /bin/sh   -l "));
 
         assertArrayEquals(new String[]{"/bin/sh", "-l"}, spec.command());
         assertEquals(dir, spec.directory());
@@ -37,9 +38,36 @@ class TerminalPanelSettingsTest {
         Settings settings = new Settings();
         settings.setTerminalStartDirectory("/does/not/exist/chrono");
 
-        LocalShellSpec spec = TerminalPanel.buildShellSpec(settings);
+        LocalShellSpec spec = TerminalPanel.buildShellSpec(settings, null);
 
         assertEquals(Path.of(System.getProperty("user.home")), spec.directory());
+    }
+
+    @Test
+    void testShellEntriesEmptyByDefault() {
+        assertTrue(TerminalPanel.shellEntries(new Settings()).isEmpty());
+    }
+
+    @Test
+    void testShellEntriesFromList() {
+        Settings settings = new Settings();
+        settings.setTerminalShell("/bin/zsh"); // legacy value ignored when the list is filled
+        settings.setTerminalShells(List.of(
+                new TerminalShell("Bash", " /bin/bash -l "),
+                new TerminalShell("No command", "  "),
+                new TerminalShell("", "/usr/bin/fish")));
+
+        List<TerminalShell> entries = TerminalPanel.shellEntries(settings);
+
+        assertEquals(List.of(new TerminalShell("Bash", "/bin/bash -l"), new TerminalShell("fish", "/usr/bin/fish")), entries);
+    }
+
+    @Test
+    void testShellEntriesMigratesLegacyShell() {
+        Settings settings = new Settings();
+        settings.setTerminalShell(" /bin/zsh -l ");
+
+        assertEquals(List.of(new TerminalShell("zsh", "/bin/zsh -l")), TerminalPanel.shellEntries(settings));
     }
 
     @Test

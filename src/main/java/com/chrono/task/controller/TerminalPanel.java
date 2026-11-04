@@ -2,6 +2,7 @@ package com.chrono.task.controller;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
@@ -10,8 +11,11 @@ import java.util.concurrent.Executors;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.geometry.Side;
 import javafx.scene.control.Button;
+import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
+import javafx.scene.control.MenuItem;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
 import javafx.scene.input.Clipboard;
@@ -22,6 +26,7 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 
 import com.chrono.task.model.Settings;
+import com.chrono.task.model.TerminalShell;
 import com.kodedu.terminalfx.TerminalExit;
 import com.kodedu.terminalfx.TerminalLook;
 import com.kodedu.terminalfx.TerminalSession;
@@ -51,7 +56,7 @@ public class TerminalPanel extends BorderPane {
 
         Button newTabButton = new Button("+");
         newTabButton.setFocusTraversable(false);
-        newTabButton.setOnAction(_ -> newTab());
+        newTabButton.setOnAction(_ -> onNewTabClicked(newTabButton));
         Button hideButton = new Button("✕");
         hideButton.setFocusTraversable(false);
         hideButton.setOnAction(_ -> onHide.run());
@@ -74,16 +79,37 @@ public class TerminalPanel extends BorderPane {
         });
     }
 
-    /** Opens a terminal if none is open yet, and gives focus to the selected one. */
+    /** Opens a terminal if none is open yet (with the default shell), and gives focus to the selected one. */
     public void ensureOneTab() {
         if (tabPane.getTabs().isEmpty()) {
-            newTab();
+            List<TerminalShell> shells = shellEntries(settings);
+            newTab(shells.isEmpty() ? null : shells.getFirst());
         } else {
             focusSelected();
         }
     }
 
-    public void newTab() {
+    /**
+     * "+" button: with several configured shells shows a menu to pick one, otherwise opens the (only/system) shell
+     * directly. The list is read on each click so settings changes apply without recreating the panel.
+     */
+    private void onNewTabClicked(Button anchor) {
+        List<TerminalShell> shells = shellEntries(settings);
+        if (shells.size() <= 1) {
+            newTab(shells.isEmpty() ? null : shells.getFirst());
+            return;
+        }
+        ContextMenu menu = new ContextMenu();
+        for (TerminalShell shell : shells) {
+            MenuItem item = new MenuItem(shell.getName());
+            item.setOnAction(_ -> newTab(shell));
+            menu.getItems().add(item);
+        }
+        menu.show(anchor, Side.BOTTOM, 0, 0);
+    }
+
+    /** Opens a new tab running {@code shell}, or the system shell when {@code shell} is null. */
+    public void newTab(TerminalShell shell) {
         TerminalView view = new TerminalView(buildLook(settings));
         view.keysClaimedBy((key, ctrl, _, _, _) -> ctrl && "F12".equals(key));
         view.onCopy(text -> {
@@ -98,10 +124,10 @@ public class TerminalPanel extends BorderPane {
             }
         });
 
-        Tab tab = new Tab("Terminal " + (++tabCounter), view);
+        Tab tab = new Tab(shell != null ? shell.getName() : "Terminal " + (++tabCounter), view);
         view.onTitle(tab::setText);
 
-        LocalShellSpec spec = buildShellSpec(settings);
+        LocalShellSpec spec = buildShellSpec(settings, shell);
         TerminalSession session = new TerminalSession(view, new LocalShell(spec, executor), executor);
         tab.setUserData(session);
         tab.setOnClosed(_ -> session.close());
@@ -168,11 +194,42 @@ public class TerminalPanel extends BorderPane {
                 .withCtrlVPastes(settings.isTerminalCtrlVPastes());
     }
 
-    static LocalShellSpec buildShellSpec(Settings settings) {
+    /**
+     * The shells to offer, in order (the first one is the default): the configured {@code terminalShells} without
+     * the entries lacking a command, or, for settings written before the list existed, the legacy single
+     * {@code terminalShell}. Empty means "use the system shell".
+     */
+    static List<TerminalShell> shellEntries(Settings settings) {
+        List<TerminalShell> entries = new ArrayList<>();
+        if (settings.getTerminalShells() != null) {
+            for (TerminalShell shell : settings.getTerminalShells()) {
+                if (shell != null && shell.getCommand() != null && !shell.getCommand().isBlank()) {
+                    String name = shell.getName() == null || shell.getName().isBlank()
+                            ? commandName(shell.getCommand())
+                            : shell.getName().trim();
+                    entries.add(new TerminalShell(name, shell.getCommand().trim()));
+                }
+            }
+        }
+        String legacy = settings.getTerminalShell();
+        if (entries.isEmpty() && legacy != null && !legacy.isBlank()) {
+            entries.add(new TerminalShell(commandName(legacy), legacy.trim()));
+        }
+        return entries;
+    }
+
+    /** Display name derived from a command line: the program's file name (e.g. "/bin/bash -l" -> "bash"). */
+    private static String commandName(String command) {
+        String program = command.trim().split("\\s+")[0];
+        Path fileName = Path.of(program).getFileName();
+        return fileName != null ? fileName.toString() : program;
+    }
+
+    /** Spec for {@code shell}, or for the system shell when {@code shell} is null; honours the start directory. */
+    static LocalShellSpec buildShellSpec(Settings settings, TerminalShell shell) {
         LocalShellSpec spec = LocalShellSpec.defaultShell();
-        String shell = settings.getTerminalShell();
-        if (shell != null && !shell.isBlank()) {
-            spec = spec.running(List.of(shell.trim().split("\\s+")));
+        if (shell != null && shell.getCommand() != null && !shell.getCommand().isBlank()) {
+            spec = spec.running(List.of(shell.getCommand().trim().split("\\s+")));
         }
         String directory = settings.getTerminalStartDirectory();
         if (directory != null && !directory.isBlank()) {
