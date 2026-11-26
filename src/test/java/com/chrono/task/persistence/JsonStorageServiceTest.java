@@ -36,5 +36,33 @@ class JsonStorageServiceTest {
         Task t2 = loaded.getTasks().getFirst();
         assertEquals("Test1", t2.getDescription());
         assertEquals(30, t2.getTotalTime().toMinutes());
+        assertFalse(t2.isTopPriority());
+    }
+
+    @Test
+    void testTopPriorityRoundTrip() throws IOException {
+        Path jsonFile = tempDir.resolve("priority.json");
+        JsonStorageService service = new JsonStorageService(jsonFile.toString());
+
+        DataStore ds = new DataStore();
+        ds.getTasks().add(Task.builder().description("Urgent").topPriority(true).build());
+        ds.getTasks().add(Task.builder().description("Later").build());
+        service.save(ds);
+
+        DataStore loaded = service.load();
+        assertTrue(loaded.getTasks().get(0).isTopPriority());
+        assertFalse(loaded.getTasks().get(1).isTopPriority());
+    }
+
+    @Test
+    void testOldDataFileWithoutTopPriority() throws IOException {
+        Path jsonFile = tempDir.resolve("old.json");
+        java.nio.file.Files.writeString(jsonFile, """
+                { "tasks": [ { "id": "1", "description": "Old task", "status": "TODO" } ] }
+                """);
+
+        DataStore loaded = new JsonStorageService(jsonFile.toString()).load();
+        assertEquals("Old task", loaded.getTasks().getFirst().getDescription());
+        assertFalse(loaded.getTasks().getFirst().isTopPriority());
     }
 }

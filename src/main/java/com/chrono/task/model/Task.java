@@ -51,6 +51,11 @@ public class Task {
     private String markdownContent = "";
 
     /**
+     * Local "top priority" flag (star in the task list). Never synced with Jira.
+     */
+    private boolean topPriority;
+
+    /**
      * Helper to add time to a specific date.
      */
     public void addTime(LocalDate date, Duration duration) {

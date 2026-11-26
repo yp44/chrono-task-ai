@@ -69,10 +69,11 @@ public class ChronoApp extends Application {
         com.chrono.task.ui.ThemeManager.apply(null, settings.getUiTheme());
 
         // 6. Setup Loader with Controller Factory
+        var uiStateService = new com.chrono.task.persistence.UiStateStorageService();
         FXMLLoader loader = new FXMLLoader(ChronoApp.class.getResource("view/main_view.fxml"));
         loader.setControllerFactory(
                 param -> new MainController(taskService, timerService, settingsService, settings, getHostServices(),
-                        jiraService, gitBackupService, jiraRefreshService));
+                        jiraService, gitBackupService, jiraRefreshService, uiStateService));
 
         // 7. Show UI
         Scene scene = new Scene(loader.load(), 1000, 700);

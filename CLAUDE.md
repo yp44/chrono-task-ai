@@ -3,7 +3,7 @@
 JavaFX desktop app: daily task list + per-day time tracking + markdown notes + Jira sync + git backup of data.
 Single Maven module, JPMS module `com.chrono.task`. ~3k LOC. Commit messages are prefixed `[AI]`, `[Human]`, `[GH Copilot]`… — use `[AI]`.
 
-**Git: never run `git add` or `git commit` on your own.** Leave changes unstaged in the working tree; the user reviews and commits. Only stage/commit when the user explicitly asks in the current request.
+**Git: work on a development branch, never on `main`.** You may add files and commit them on a development branch (e.g. `feature/<issue>-<topic>`), push that branch and open a PR for review. **Never commit or push directly to `main`.**
 
 ## Build / run / test
 - Toolchain: JDK 27 (sdkman), Maven 3.9. `maven.compiler.release=27`, **`--enable-preview` everywhere** (compiler, javafx:run, surefire).
@@ -19,14 +19,16 @@ Single Maven module, JPMS module `com.chrono.task`. ~3k LOC. Commit messages are
 | Path | Role |
 |---|---|
 | `ChronoApp` | Composition root: loads Settings, resolves data dir, constructs all services by hand (no DI), injects them into `MainController` via FXML controller factory; `stop()` shuts everything down (force-save, final git backup). |
-| `model/Task` | Core entity (Lombok `@Data @Builder`). `taskHistory: Map<LocalDate, TaskDailyWork>`; helpers `addTime/setTime/getTimeForDate/getDurationToday/getDurationLast30Days/getTotalTime`, daily notes, labels (`getLabel/getDisplayLabel/getHistoryLabel`), `cleanupHistory()` (drops past days < 2 min with no note). `@JsonIgnore` on computed getters. `tag="new_auto"` marks JQL-created tasks. |
+| `model/Task` | Core entity (Lombok `@Data @Builder`). `taskHistory: Map<LocalDate, TaskDailyWork>`; helpers `addTime/setTime/getTimeForDate/getDurationToday/getDurationLast30Days/getTotalTime`, daily notes, labels (`getLabel/getDisplayLabel/getHistoryLabel`), `cleanupHistory()` (drops past days < 2 min with no note). `@JsonIgnore` on computed getters. `tag="new_auto"` marks JQL-created tasks. `topPriority` = local ★ flag (never synced with Jira). |
 | `model/TaskDailyWork` | duration, note, status per day. |
 | `model/TaskStatus` | TODO, IN_PROGRESS, VALIDATION, DONE, NONE, UNKNOWN, TO_DELETE. `NONE` = hide badge, not refreshed from Jira. `TO_DELETE` = excluded on save (soft delete). |
 | `model/Settings` | Jira creds/base URL/JQL/refresh interval, data path, git backup interval, markdown font, `uiTheme` (DARK/LIGHT), `terminal*` (`terminalShells` = list of `TerminalShell{name,command}`, first = default, legacy `terminalShell` migrated by `TerminalPanel.shellEntries`; start dir, theme, font, size, scrollback, copy/paste flags). |
 | `model/DataStore` | `{ tasks: [...] }` root of `data.json`. |
+| `model/UiState` | UI state remembered between launches (not settings): `focusTopPriorities`. |
 | `persistence/JsonStorageService` | Jackson + JavaTimeModule ↔ `<dataDir>/data.json`. Implements `StorageService` (interface, mockable). |
 | `persistence/SettingsStorageService` | `~/.chrono-task-ai.settings.json` (override by sysprop `chronotaskai.settings.file`). Plain mapper (ChronoUnit as string). |
-| `service/TaskService` | Owns `ObservableList<Task> tasks` (single source of truth). Create (unique description), update description/Jira URL (uniqueness → `IllegalArgumentException`), `filter(query, showDone[, date])` (date = only tasks with >2 min or a note that day, `Task.hasActivityOn`), `updateOrder`, auto-save every 3 min (first after 30 min!) + save on shutdown. |
+| `persistence/UiStateStorageService` | `UiState` ↔ `~/.chrono-task-ai/state.json` (fixed path, not the data dir; sysprop `chronotaskai.state.file`, else next to the `chronotaskai.settings.file` file if set). `load()` never fails (defaults); written on each change. |
+| `service/TaskService` | Owns `ObservableList<Task> tasks` (single source of truth). Create (unique description), update description/Jira URL (uniqueness → `IllegalArgumentException`), `filter(query, showDone[, date[, onlyTopPriorities]])` (AND-combined; date = only tasks with >2 min or a note that day, `Task.hasActivityOn`), `updateOrder`, auto-save every 3 min (first after 30 min!) + save on shutdown. |
 | `service/TimerService` | One active task; 1 s ticker adds elapsed time into `task.addTime(today, …)` directly on the model (off FX thread). pause/resume. |
 | `service/JiraService` | `java.net.http` async client, Basic auth email:token. `fetchIssue(url)` (URL regex `https://X.atlassian.net/browse/KEY`), `searchByJql` (`/rest/api/3/search/jql`, max 100), `mapStatus` (hard-coded Jira→TaskStatus mapping), `buildIssueUrl`. |
 | `service/JiraRefreshService` | Scheduled: refresh status of non-DONE/NONE/TO_DELETE Jira tasks; run JQL and insert new tasks at top with `tag=new_auto` (skips rejected/closed/done/final check/eap). Exposes `isRefreshingProperty`. |
@@ -41,11 +43,12 @@ Single Maven module, JPMS module `com.chrono.task`. ~3k LOC. Commit messages are
 | `module-info.java` | Must `opens` packages to javafx.fxml / jackson; add `requires` for any new library. |
 
 ## Key behaviours / data flow
-- **Locate active task**: target-icon button (SVGPath; emoji don't render in JavaFX on Linux) in the header → `onLocateActiveTask` (switches to Work tab, clears filter / shows done tasks if hidden, selects + scrolls to it).
+- **Locate active task**: target-icon button (SVGPath; emoji don't render in JavaFX on Linux) in the header → `onLocateActiveTask` (switches to Work tab, clears text/day/top-priority filters / shows done tasks if hidden, selects + scrolls to it).
 - **Window title**: live, set from `updateTimerLabel()` via static `MainController.buildWindowTitle` (unit tested): `▶ HH:MM · <task> — Chrono Task AI`, `⏸ Paused · …`, or `Chrono Task AI · Day XXhYYm` when idle; only re-set when the text changes.
 - **Start timer**: double-click a task cell → `timerService.setActiveTask` (also clears `new_auto` tag). Single click only selects/loads details.
 - **Editing**: text-field listeners write straight into the selected `Task` (no save button); persistence is by auto-save. Description field pasted with a Jira URL → fetch issue, replace description with summary, set jiraUrl/status/isJira.
 - **Day filter**: `DatePicker` (`taskDateFilterPicker`, X button = `clearDateFilter`) above "Show completed tasks" in the Work tab; combined with the text filter and the done checkbox; reset by `onLocateActiveTask` if it hides the active task.
+- **Top priority**: SVGPath star button at the left of each `TaskListCell` (outline/filled via `:on` pseudo-class) → `toggleTopPriority`; the button consumes all mouse events so a click never selects, starts the timer or drags. Flagged cells get `task-priority` (right-side stripe, combines with the left stripe of `task-active`/`new-auto`/selected). "Focus: top priorities" checkbox (`focusTopPrioritiesCheckbox`) under "Show completed tasks": AND filter, state persisted in `state.json` (`UiStateStorageService`).
 - **List view**: `applyFilters()` replaces `taskListView` items with a *filtered copy* of `taskService.getTasks()`; reorder (DnD) mutates the master list then re-applies filters. Beware index mismatch between filtered view and master list.
 - **Markdown preview**: WebView re-rendered every 3 s (flexmark) from `markdownContent` + "Daily Notes" section; scroll position preserved; edit icons call JS `editDailyNote(date)` → `alert('edit-daily-note:<date>')` → `onAlert` handler opens edit dialog.
 - **History tab**: single day (text list, >2 min or note) or date range (tab-separated report; Jira tasks re-fetched for type/status).
@@ -57,9 +60,10 @@ Single Maven module, JPMS module `com.chrono.task`. ~3k LOC. Commit messages are
 ## Data files
 - `~/.chrono-task-ai.settings.json` — settings (contains Jira API token in clear).
 - `<dataStoragePath>/data.json` (default `~/.chrono-task-ai/`) — tasks; optional git repo there.
+- `~/.chrono-task-ai/state.json` — UI state (Focus filter); not git-backed up.
 
 ## Tests (src/test/java, JUnit 5 + Mockito)
-`TaskTest`, `TaskServiceTest` (mocked StorageService), `TimerServiceTest`, `JiraServiceTest` (URL regex only), `JsonStorageServiceTest`, `TerminalPanelSettingsTest` (settings → TerminalFX mapping, no FX toolkit), `ThemeManagerTest`, `DesktopIntegrationTest` (desktop entry + Exec quoting). No UI tests. Surefire argLine adds `--add-reads/--add-opens` for `com.chrono.task`, but tests actually run on the classpath (surefire prints "Unknown module: com.chrono.task"), so those flags are no-ops. `mvn clean verify` passes on JDK 27; the many `sun.misc.Unsafe` / dynamic-agent warnings (Lombok, Mockito's byte-buddy) are expected noise.
+`TaskTest`, `TaskServiceTest` (mocked StorageService), `TimerServiceTest`, `JiraServiceTest` (URL regex only), `JsonStorageServiceTest`, `SettingsStorageServiceTest`, `UiStateStorageServiceTest`, `TerminalPanelSettingsTest` (settings → TerminalFX mapping, no FX toolkit), `ThemeManagerTest`, `DesktopIntegrationTest` (desktop entry + Exec quoting). No UI tests. Surefire argLine adds `--add-reads/--add-opens` for `com.chrono.task`, but tests actually run on the classpath (surefire prints "Unknown module: com.chrono.task"), so those flags are no-ops. `mvn clean verify` passes on JDK 27; the many `sun.misc.Unsafe` / dynamic-agent warnings (Lombok, Mockito's byte-buddy) are expected noise.
 
 ## Conventions
 - Lombok for models (`@Data @Builder @NoArgsConstructor @AllArgsConstructor`, `@Builder.Default` for initialized fields); `@Slf4j` for logging (some legacy `System.out/err` remain).

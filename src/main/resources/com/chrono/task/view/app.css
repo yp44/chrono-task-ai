@@ -161,8 +161,36 @@
     -fx-font-weight: bold;
 }
 
+/* top priority: stripe on the right, so it combines with the left stripe of new-auto / task-active / selected */
+.task-list > .virtual-flow > .clipped-container > .sheet > .list-cell.task-priority {
+    -fx-border-color: -color-warning-emphasis;
+    -fx-border-width: 0 4 0 0;
+    -fx-border-insets: 2 4 2 4;
+    -fx-border-radius: 0 8 8 0;
+}
+
 .task-label {
     -fx-text-fill: -color-fg-default;
+}
+
+/* top priority star toggle (left of each task): outline when off, filled when on */
+.priority-star {
+    -fx-padding: 2 3 2 3;
+}
+
+.priority-star .priority-star-icon {
+    -fx-fill: transparent;
+    -fx-stroke: -color-fg-subtle;
+    -fx-stroke-width: 1.2;
+}
+
+.priority-star:hover .priority-star-icon {
+    -fx-stroke: -color-warning-emphasis;
+}
+
+.priority-star:on .priority-star-icon {
+    -fx-fill: -color-warning-emphasis;
+    -fx-stroke: -color-warning-emphasis;
 }
 
 /* status badges */
