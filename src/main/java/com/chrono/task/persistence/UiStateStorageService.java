@@ -59,7 +59,8 @@ public class UiStateStorageService {
             UiState state = mapper.readValue(file, UiState.class);
             return state != null ? state : new UiState();
         } catch (IOException e) {
-            log.warn("Can't read UI state from {}, using defaults", file.getAbsolutePath(), e);
+            // Handled case (corrupt/hand-edited file): message only, no stack trace
+            log.warn("Can't read UI state from {}, using defaults: {}", file.getAbsolutePath(), e.getMessage());
             return new UiState();
         }
     }
