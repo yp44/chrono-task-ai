@@ -8,6 +8,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -54,6 +55,17 @@ public class Task {
      * Local "top priority" flag (star in the task list). Never synced with Jira.
      */
     private boolean topPriority;
+
+    /**
+     * Start of the last timer session of at least {@link #ACTIVATION_MIN_DURATION} on this task
+     * ("Last used" sort of the task list). Null = never activated. Never synced with Jira.
+     */
+    private Instant lastActivatedAt;
+
+    /**
+     * Minimal duration of a timer session for it to count as an activation (see {@link #lastActivatedAt}).
+     */
+    public static final Duration ACTIVATION_MIN_DURATION = Duration.ofMinutes(2);
 
     /**
      * Helper to add time to a specific date.

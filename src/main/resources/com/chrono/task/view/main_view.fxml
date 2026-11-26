@@ -66,6 +66,11 @@
                                                                styleClass="search-field"/>
                                                     <Button mnemonicParsing="false" styleClass="icon-button"
                                                             onAction="#clearFilter" text="X"/>
+                                                    <ComboBox fx:id="taskSortComboBox" minWidth="-Infinity" prefWidth="135.0">
+                                                        <tooltip>
+                                                            <Tooltip text="Sort by: manual order (drag &amp; drop) or last used (timer session of 2 min or more)"/>
+                                                        </tooltip>
+                                                    </ComboBox>
                                                 </HBox>
                                                 <HBox spacing="4.0" alignment="CENTER_LEFT">
                                                     <DatePicker fx:id="taskDateFilterPicker" promptText="Filter by day..."

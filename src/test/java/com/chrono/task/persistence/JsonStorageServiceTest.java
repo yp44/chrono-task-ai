@@ -64,5 +64,22 @@ class JsonStorageServiceTest {
         DataStore loaded = new JsonStorageService(jsonFile.toString()).load();
         assertEquals("Old task", loaded.getTasks().getFirst().getDescription());
         assertFalse(loaded.getTasks().getFirst().isTopPriority());
+        assertNull(loaded.getTasks().getFirst().getLastActivatedAt());
+    }
+
+    @Test
+    void testLastActivatedAtRoundTrip() throws IOException {
+        Path jsonFile = tempDir.resolve("activation.json");
+        JsonStorageService service = new JsonStorageService(jsonFile.toString());
+        java.time.Instant when = java.time.Instant.parse("2026-11-26T08:15:30.123Z");
+
+        DataStore ds = new DataStore();
+        ds.getTasks().add(Task.builder().description("Used").lastActivatedAt(when).build());
+        ds.getTasks().add(Task.builder().description("Never used").build());
+        service.save(ds);
+
+        DataStore loaded = service.load();
+        assertEquals(when, loaded.getTasks().get(0).getLastActivatedAt());
+        assertNull(loaded.getTasks().get(1).getLastActivatedAt());
     }
 }

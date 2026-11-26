@@ -18,6 +18,7 @@ import javafx.collections.ObservableList;
 
 import com.chrono.task.model.DataStore;
 import com.chrono.task.model.Task;
+import com.chrono.task.model.TaskSortMode;
 import com.chrono.task.model.TaskStatus;
 import com.chrono.task.persistence.StorageService;
 
@@ -135,6 +136,21 @@ public class TaskService {
         return stream.filter(t -> showDoneTasks ||
                         (t.getStatus() != com.chrono.task.model.TaskStatus.DONE && t.getStatus() != TaskStatus.TO_DELETE))
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * Returns a sorted copy of {@code tasks} (expected in manual order, e.g. a {@link #filter} result).
+     * {@link TaskSortMode#MANUAL}: unchanged order. {@link TaskSortMode#LAST_USED}: most recent
+     * {@link Task#getLastActivatedAt()} first, never activated tasks at the bottom; ties keep the given order.
+     */
+    public static List<Task> sort(List<Task> tasks, TaskSortMode mode) {
+        List<Task> sorted = new java.util.ArrayList<>(tasks);
+        if (mode == TaskSortMode.LAST_USED) {
+            // List.sort is stable: equal keys (incl. all the never activated tasks) keep the manual order
+            sorted.sort(Comparator.comparing(Task::getLastActivatedAt,
+                    Comparator.nullsLast(Comparator.reverseOrder())));
+        }
+        return sorted;
     }
 
     public void updateOrder(List<Task> newOrder) {
