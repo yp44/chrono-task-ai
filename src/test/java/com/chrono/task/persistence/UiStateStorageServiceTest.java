@@ -1,5 +1,6 @@
 package com.chrono.task.persistence;
 
+import com.chrono.task.model.TaskSortMode;
 import com.chrono.task.model.UiState;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -40,6 +41,37 @@ class UiStateStorageServiceTest {
     void testMissingFileGivesDefaults(@TempDir Path dir) {
         UiState state = new UiStateStorageService(dir.resolve("none.json").toFile()).load();
         assertFalse(state.isFocusTopPriorities());
+        assertEquals(TaskSortMode.MANUAL, state.getTaskSortMode());
+    }
+
+    @Test
+    void testSortModeRoundTrip(@TempDir Path dir) throws Exception {
+        UiStateStorageService service = new UiStateStorageService(dir.resolve("state.json").toFile());
+
+        service.save(UiState.builder().taskSortMode(TaskSortMode.LAST_USED).build());
+        assertEquals(TaskSortMode.LAST_USED, service.load().getTaskSortMode());
+
+        service.save(UiState.builder().taskSortMode(TaskSortMode.MANUAL).build());
+        assertEquals(TaskSortMode.MANUAL, service.load().getTaskSortMode());
+    }
+
+    @Test
+    void testOldOrUnknownSortModeGivesManual(@TempDir Path dir) throws Exception {
+        Path file = dir.resolve("state.json");
+        UiStateStorageService service = new UiStateStorageService(file.toFile());
+
+        // File written before the "Sort by" combo existed
+        Files.writeString(file, "{ \"focusTopPriorities\": true }");
+        assertEquals(TaskSortMode.MANUAL, service.load().getTaskSortMode());
+
+        // Unknown value (newer version) or null: MANUAL, the other fields are kept
+        Files.writeString(file, "{ \"focusTopPriorities\": true, \"taskSortMode\": \"ALPHABETICAL\" }");
+        UiState state = service.load();
+        assertEquals(TaskSortMode.MANUAL, state.getTaskSortMode());
+        assertTrue(state.isFocusTopPriorities());
+
+        Files.writeString(file, "{ \"taskSortMode\": null }");
+        assertEquals(TaskSortMode.MANUAL, service.load().getTaskSortMode());
     }
 
     @Test

@@ -151,6 +151,53 @@ class TaskServiceTest {
     }
 
     @Test
+    void testSortLastUsed() {
+        Task a = service.createTask("A");
+        Task b = service.createTask("B");
+        Task c = service.createTask("C");
+        Task d = service.createTask("D");
+        Task e = service.createTask("E");
+        java.time.Instant t0 = java.time.Instant.parse("2026-11-20T09:00:00Z");
+        b.setLastActivatedAt(t0);
+        d.setLastActivatedAt(t0.plusSeconds(3600));
+        e.setLastActivatedAt(t0); // tie with b: manual order kept
+        List<Task> manual = List.copyOf(service.getTasks());
+
+        // Manual: unchanged copy
+        List<Task> sortedManual = TaskService.sort(manual, com.chrono.task.model.TaskSortMode.MANUAL);
+        assertEquals(manual, sortedManual);
+        assertNotSame(manual, sortedManual);
+
+        // Last used: most recent first, ties and never activated tasks in manual order, the latter at the bottom
+        List<Task> neverActivated = manual.stream().filter(t -> t == a || t == c).toList();
+        List<Task> activatedAtT0 = manual.stream().filter(t -> t == b || t == e).toList();
+        List<Task> expected = new java.util.ArrayList<>();
+        expected.add(d);
+        expected.addAll(activatedAtT0);
+        expected.addAll(neverActivated);
+        assertEquals(expected, TaskService.sort(manual, com.chrono.task.model.TaskSortMode.LAST_USED));
+
+        // The master list is never reordered
+        assertEquals(manual, service.getTasks());
+    }
+
+    @Test
+    void testSortLastUsedAfterFilters() {
+        Task milk = service.createTask("Buy Milk");
+        Task bread = service.createTask("Buy Bread");
+        Task dog = service.createTask("Walk Dog");
+        milk.setLastActivatedAt(java.time.Instant.parse("2026-11-20T09:00:00Z"));
+        bread.setLastActivatedAt(java.time.Instant.parse("2026-11-21T09:00:00Z"));
+        dog.setLastActivatedAt(java.time.Instant.parse("2026-11-22T09:00:00Z"));
+        bread.setStatus(com.chrono.task.model.TaskStatus.DONE);
+
+        List<Task> filtered = service.filter("buy", false, null, false);
+        assertEquals(List.of(milk), TaskService.sort(filtered, com.chrono.task.model.TaskSortMode.LAST_USED));
+        assertEquals(List.of(bread, milk),
+                TaskService.sort(service.filter("buy", true, null, false), com.chrono.task.model.TaskSortMode.LAST_USED));
+    }
+
+    @Test
     void testFilterTopPriorities() {
         LocalDate day = LocalDate.of(2023, 1, 1);
         Task milk = service.createTask("Buy Milk");

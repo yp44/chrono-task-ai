@@ -79,6 +79,8 @@ public class MainController {
     @FXML
     private javafx.scene.control.CheckBox focusTopPrioritiesCheckbox;
     @FXML
+    private ComboBox<com.chrono.task.model.TaskSortMode> taskSortComboBox;
+    @FXML
     private ListView<Task> taskListView;
     @FXML
     private TextArea markdownEditor;
@@ -234,6 +236,20 @@ public class MainController {
         focusTopPrioritiesCheckbox.selectedProperty().addListener((_, _, selected) -> {
             applyFilters();
             uiState.setFocusTopPriorities(selected);
+            saveUiState();
+        });
+
+        // "Sort by" is remembered between launches (state.json)
+        taskSortComboBox.getItems().setAll(com.chrono.task.model.TaskSortMode.values());
+        taskSortComboBox.setValue(uiState.getTaskSortMode());
+        taskSortComboBox.valueProperty().addListener((_, _, mode) -> {
+            Task selected = taskListView.getSelectionModel().getSelectedItem();
+            applyFilters();
+            if (selected != null && taskListView.getItems().contains(selected)) {
+                taskListView.getSelectionModel().select(selected);
+                taskListView.scrollTo(selected);
+            }
+            uiState.setTaskSortMode(mode);
             saveUiState();
         });
 
@@ -1057,7 +1073,8 @@ private void showPopup(String title, String message) {
     }
 
     /**
-     * Apply the text filter, the day filter, the Done status filter and the top priority filter to the task list
+     * Apply the text filter, the day filter, the Done status filter and the top priority filter to the task list,
+     * then the "Sort by" order. This is the only place the list is re-sorted: no live reordering while the timer runs.
      */
     private void applyFilters() {
         String filterText = filterField.getText();
@@ -1066,7 +1083,20 @@ private void showPopup(String title, String message) {
         // Start with all tasks or filtered tasks based on text
         java.util.List<Task> filteredTasks = taskService.filter(filterText, showDoneTasks, taskDateFilterPicker.getValue(),
                 focusTopPrioritiesCheckbox.isSelected());
+        filteredTasks = TaskService.sort(filteredTasks, currentSortMode());
         taskListView.setItems(javafx.collections.FXCollections.observableArrayList(filteredTasks));
+    }
+
+    private com.chrono.task.model.TaskSortMode currentSortMode() {
+        com.chrono.task.model.TaskSortMode mode = taskSortComboBox.getValue();
+        return mode != null ? mode : com.chrono.task.model.TaskSortMode.MANUAL;
+    }
+
+    /**
+     * Drag &amp; drop reordering only makes sense on the manual order: disabled in the other sort modes.
+     */
+    private boolean isManualOrder() {
+        return currentSortMode() == com.chrono.task.model.TaskSortMode.MANUAL;
     }
 
     private void saveUiState() {
@@ -1441,7 +1471,7 @@ private void showPopup(String title, String message) {
 
             setOnDragDetected(event -> {
                 Task toMove = taskListView.getSelectionModel().getSelectedItem();
-                if (toMove == null) {
+                if (toMove == null || !isManualOrder()) {
                     return;
                 }
                 javafx.scene.input.Dragboard dragboard = startDragAndDrop(javafx.scene.input.TransferMode.MOVE);
@@ -1452,7 +1482,7 @@ private void showPopup(String title, String message) {
             });
 
             setOnDragOver(event -> {
-                if (event.getGestureSource() != this && event.getDragboard().hasString()) {
+                if (event.getGestureSource() != this && event.getDragboard().hasString() && isManualOrder()) {
                     event.acceptTransferModes(javafx.scene.input.TransferMode.MOVE);
                 }
                 event.consume();
@@ -1471,7 +1501,7 @@ private void showPopup(String title, String message) {
             });
 
             setOnDragDropped(event -> {
-                if (getItem() == null) {
+                if (getItem() == null || !isManualOrder()) {
                     return;
                 }
                 javafx.scene.input.Dragboard db = event.getDragboard();
