@@ -10,6 +10,7 @@ Single Maven module, JPMS module `com.chrono.task`. ~3k LOC. Commit messages are
 - `mvn clean verify` — build + tests. `mvn test -Dtest=TaskServiceTest` — single test.
 - `mvn javafx:run` — launch the app (main class `com.chrono.task.ChronoApp`, uses instance-main style `static void main()`).
 - Use a throwaway settings file to avoid touching real data: `-Dchronotaskai.settings.file=/tmp/x.json` — must be enabled via the commented `<option>` in the pom's javafx-maven-plugin config; passing `-D…` to `mvn javafx:run` does **not** reach the forked JVM (real settings/data get used).
+- Test data set: `python3 tools/gen_test_data.py /tmp/chrono-test [--tasks 50 --usages 30 --days 180 --never-used-ratio 0.1 --seed 42]` writes `settings.json` (Jira/git off) + `state.json` + `data/data.json` (tasks with N history days each, all > 2 min so `cleanupHistory` keeps them, `lastActivatedAt` = start of the last one). Then point the pom `<option>` at `/tmp/chrono-test/settings.json`. JSON gotcha: the Jira flag key is `"jira"` (Lombok `isJira()` getter), not `"isJira"` (silently ignored).
 - Logs: console + `logs/chrono-task.log` (relative to CWD); `com.chrono.task` at DEBUG.
 - TerminalFX is **not on Maven Central**: the pom declares the `terminalfx` repository (`https://github.com/javaterminal/TerminalFX/raw/master/releases`).
 - `javafx:run` options include `--enable-native-access=javafx.graphics,javafx.web,com.sun.jna` (JDK 27 warns otherwise).
