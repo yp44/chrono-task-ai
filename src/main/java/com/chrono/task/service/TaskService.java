@@ -104,7 +104,18 @@ public class TaskService {
      * (see {@link Task#hasActivityOn(LocalDate)}) when {@code date} is not null.
      */
     public List<Task> filter(String query, boolean showDoneTasks, LocalDate date) {
+        return filter(query, showDoneTasks, date, false);
+    }
+
+    /**
+     * Same as {@link #filter(String, boolean, LocalDate)}, additionally keeping only the top priority tasks
+     * when {@code onlyTopPriorities} is true (all the criteria are combined with AND).
+     */
+    public List<Task> filter(String query, boolean showDoneTasks, LocalDate date, boolean onlyTopPriorities) {
         Stream<Task> stream = tasks.stream();
+        if (onlyTopPriorities) {
+            stream = stream.filter(Task::isTopPriority);
+        }
         if (date != null) {
             stream = stream.filter(t -> t.hasActivityOn(date));
         }

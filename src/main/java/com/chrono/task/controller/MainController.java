@@ -77,6 +77,8 @@ public class MainController {
     @FXML
     private javafx.scene.control.CheckBox showDoneTasksCheckbox;
     @FXML
+    private javafx.scene.control.CheckBox focusTopPrioritiesCheckbox;
+    @FXML
     private ListView<Task> taskListView;
     @FXML
     private TextArea markdownEditor;
@@ -185,6 +187,8 @@ public class MainController {
     private final com.chrono.task.service.JiraService jiraService;
     private final com.chrono.task.service.GitBackupService gitBackupService;
     private final com.chrono.task.service.JiraRefreshService jiraRefreshService;
+    private final com.chrono.task.persistence.UiStateStorageService uiStateService;
+    private final com.chrono.task.model.UiState uiState;
 
     private static final String APP_NAME = "Chrono Task AI";
     private static final String totalTimerFormat = "Total: %02d:%02d";
@@ -197,7 +201,8 @@ public class MainController {
             javafx.application.HostServices hostServices,
             com.chrono.task.service.JiraService jiraService,
             com.chrono.task.service.GitBackupService gitBackupService,
-            com.chrono.task.service.JiraRefreshService jiraRefreshService) {
+            com.chrono.task.service.JiraRefreshService jiraRefreshService,
+            com.chrono.task.persistence.UiStateStorageService uiStateService) {
         this.taskService = taskService;
         this.timerService = timerService;
         this.settingsService = settingsService;
@@ -206,6 +211,8 @@ public class MainController {
         this.jiraService = jiraService;
         this.gitBackupService = gitBackupService;
         this.jiraRefreshService = jiraRefreshService;
+        this.uiStateService = uiStateService;
+        this.uiState = uiStateService.load();
     }
 
     @FXML
@@ -217,11 +224,18 @@ public class MainController {
 
         // Initialize showDoneTasksCheckbox as unchecked (hide Done tasks by default)
         showDoneTasksCheckbox.setSelected(false);
+        // "Focus: top priorities" is remembered between launches (state.json)
+        focusTopPrioritiesCheckbox.setSelected(uiState.isFocusTopPriorities());
 
         // Filter - listen to both filterField text changes and showDoneTasksCheckbox changes
         filterField.textProperty().addListener((_, _, newVal) -> applyFilters());
         showDoneTasksCheckbox.selectedProperty().addListener((_, _, newVal) -> applyFilters());
         taskDateFilterPicker.valueProperty().addListener((_, _, _) -> applyFilters());
+        focusTopPrioritiesCheckbox.selectedProperty().addListener((_, _, selected) -> {
+            applyFilters();
+            uiState.setFocusTopPriorities(selected);
+            saveUiState();
+        });
 
         // Apply initial filter to hide Done tasks by default
         applyFilters();
@@ -1043,15 +1057,41 @@ private void showPopup(String title, String message) {
     }
 
     /**
-     * Apply the text filter, the day filter and the Done status filter to the task list
+     * Apply the text filter, the day filter, the Done status filter and the top priority filter to the task list
      */
     private void applyFilters() {
         String filterText = filterField.getText();
         boolean showDoneTasks = showDoneTasksCheckbox.isSelected();
 
         // Start with all tasks or filtered tasks based on text
-        java.util.List<Task> filteredTasks = taskService.filter(filterText, showDoneTasks, taskDateFilterPicker.getValue());
+        java.util.List<Task> filteredTasks = taskService.filter(filterText, showDoneTasks, taskDateFilterPicker.getValue(),
+                focusTopPrioritiesCheckbox.isSelected());
         taskListView.setItems(javafx.collections.FXCollections.observableArrayList(filteredTasks));
+    }
+
+    private void saveUiState() {
+        try {
+            uiStateService.save(uiState);
+        } catch (java.io.IOException e) {
+            log.error("Failed to save the UI state to {}", uiStateService.getFile().getAbsolutePath(), e);
+        }
+    }
+
+    /**
+     * Star click in the task list: toggles the top priority flag of {@code task}.
+     */
+    private void toggleTopPriority(Task task) {
+        task.setTopPriority(!task.isTopPriority());
+        if (focusTopPrioritiesCheckbox.isSelected()) {
+            // The task may leave the focused list: re-filter, keeping the selection when still visible
+            Task selected = taskListView.getSelectionModel().getSelectedItem();
+            applyFilters();
+            if (selected != null && taskListView.getItems().contains(selected)) {
+                taskListView.getSelectionModel().select(selected);
+            }
+        } else {
+            taskListView.refresh();
+        }
     }
 
     private void updateTimerLabel() {
@@ -1124,9 +1164,11 @@ private void showPopup(String title, String message) {
         }
         mainTabPane.getSelectionModel().select(workTab);
         if (!taskListView.getItems().contains(active)) {
-            // Hidden by the text filter and/or the "show completed" checkbox (listeners re-apply filters)
+            // Hidden by the text/day/top priority filters and/or the "show completed" checkbox
+            // (listeners re-apply filters)
             filterField.setText("");
             taskDateFilterPicker.setValue(null);
+            focusTopPrioritiesCheckbox.setSelected(false);
             if (!taskListView.getItems().contains(active)) {
                 showDoneTasksCheckbox.setSelected(true);
             }
@@ -1283,6 +1325,11 @@ private void showPopup(String title, String message) {
     }
 
     // Inner class for drag and drop cell
+    /** 5-branch star, 14x14 px. */
+    private static final String PRIORITY_STAR_PATH =
+            "M7 0 L9.16 4.38 L14 5.09 L10.5 8.5 L11.33 13.31 L7 11.04 L2.67 13.31 L3.5 8.5 L0 5.09 L4.84 4.38 Z";
+    private static final javafx.css.PseudoClass PRIORITY_ON = javafx.css.PseudoClass.getPseudoClass("on");
+
     private class TaskListCell extends ListCell<Task> {
 
         private final HBox hbox = new HBox(10);
@@ -1290,9 +1337,31 @@ private void showPopup(String title, String message) {
         private final Label statusLabel = new Label();
         private final Button webButton = new Button("🌐");
         private final Button slackButton = new Button("💬");
+        private final Button priorityButton = new Button();
+        private final javafx.scene.control.Tooltip priorityTooltip = new javafx.scene.control.Tooltip();
 
         public TaskListCell() {
             hbox.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+
+            // Top priority star (SVG: emoji don't render in JavaFX on Linux); outline/filled via app.css
+            javafx.scene.shape.SVGPath star = new javafx.scene.shape.SVGPath();
+            star.setContent(PRIORITY_STAR_PATH);
+            star.getStyleClass().add("priority-star-icon");
+            priorityButton.setGraphic(star);
+            priorityButton.getStyleClass().addAll("icon-button", "priority-star");
+            priorityButton.setMinWidth(javafx.scene.layout.Region.USE_PREF_SIZE);
+            priorityButton.setFocusTraversable(false);
+            priorityButton.setTooltip(priorityTooltip);
+            priorityButton.setOnAction(event -> {
+                Task item = getItem();
+                if (item != null) {
+                    toggleTopPriority(item);
+                }
+                event.consume();
+            });
+            // Keep the mouse events away from the cell: no selection change, no timer start on a
+            // double-click, no drag & drop (the button's own handlers still run)
+            priorityButton.addEventHandler(javafx.scene.input.MouseEvent.ANY, javafx.event.Event::consume);
 
             // Layout configuration
             label.setMaxWidth(Double.MAX_VALUE);
@@ -1325,7 +1394,7 @@ private void showPopup(String title, String message) {
                 event.consume();
             });
 
-            hbox.getChildren().addAll(label, statusLabel, webButton, slackButton);
+            hbox.getChildren().addAll(priorityButton, label, statusLabel, webButton, slackButton);
 
             // Bind HBox width to Cell width to ensure truncation works
             // Subtracting logic to account for padding/scrollbars
@@ -1443,7 +1512,7 @@ private void showPopup(String title, String message) {
             if (empty || item == null) {
                 setText(null);
                 setGraphic(null);
-                getStyleClass().removeAll("new-auto", "task-active");
+                getStyleClass().removeAll("new-auto", "task-active", "task-priority");
             } else {
                 setText(null);
                 label.setText(item.getLabel());
@@ -1458,14 +1527,20 @@ private void showPopup(String title, String message) {
                 boolean hasSlack = item.getSlackUrl() != null && !item.getSlackUrl().isBlank();
                 slackButton.setVisible(hasSlack);
                 slackButton.setManaged(hasSlack);
+                boolean priority = item.isTopPriority();
+                priorityButton.pseudoClassStateChanged(PRIORITY_ON, priority);
+                priorityTooltip.setText(priority ? "Top priority (click to unmark)" : "Mark as top priority");
                 setGraphic(hbox);
 
-                // Highlight auto-created tasks and the task being timed (see app.css)
-                getStyleClass().removeAll("new-auto", "task-active");
+                // Highlight auto-created tasks, the task being timed and top priorities (see app.css)
+                getStyleClass().removeAll("new-auto", "task-active", "task-priority");
                 if (item == timerService.activeTaskProperty().get()) {
                     getStyleClass().add("task-active");
                 } else if ("new_auto".equals(item.getTag())) {
                     getStyleClass().add("new-auto");
+                }
+                if (priority) {
+                    getStyleClass().add("task-priority");
                 }
             }
         }

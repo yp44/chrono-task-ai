@@ -151,6 +151,35 @@ class TaskServiceTest {
     }
 
     @Test
+    void testFilterTopPriorities() {
+        LocalDate day = LocalDate.of(2023, 1, 1);
+        Task milk = service.createTask("Buy Milk");
+        milk.setTopPriority(true);
+        milk.setTime(day, java.time.Duration.ofMinutes(10));
+        Task bread = service.createTask("Buy Bread");
+        bread.setTime(day, java.time.Duration.ofMinutes(10));
+        Task dog = service.createTask("Walk Dog");
+        dog.setTopPriority(true);
+        Task done = service.createTask("Done Task");
+        done.setTopPriority(true);
+        done.setStatus(com.chrono.task.model.TaskStatus.DONE);
+
+        // Off: same as before
+        assertEquals(List.of(milk, bread, dog), service.filter("", false, null, false));
+
+        // Alone (done tasks shown or not)
+        assertEquals(List.of(milk, dog, done), service.filter("", true, null, true));
+        assertEquals(List.of(milk, dog), service.filter("", false, null, true));
+
+        // Combined with the text query
+        assertEquals(List.of(milk), service.filter("buy", false, null, true));
+        assertTrue(service.filter("bread", false, null, true).isEmpty());
+
+        // Combined with the day filter
+        assertEquals(List.of(milk), service.filter("", false, day, true));
+    }
+
+    @Test
     void testSlackUrl() {
         Task t = service.createTask("Slack Task");
         service.updateTaskSlackUrl(t, "https://slack.com/archives/C12345");
