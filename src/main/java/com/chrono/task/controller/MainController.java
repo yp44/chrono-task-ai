@@ -223,6 +223,7 @@ public class MainController {
         taskListView.getSelectionModel().setSelectionMode(SelectionMode.SINGLE);
         taskListView.setItems(taskService.getTasks());
         taskListView.setCellFactory(_ -> new TaskListCell());
+        setupTaskContextMenu();
 
         // Initialize showDoneTasksCheckbox as unchecked (hide Done tasks by default)
         showDoneTasksCheckbox.setSelected(false);
@@ -1110,6 +1111,73 @@ private void showPopup(String title, String message) {
     /**
      * Star click in the task list: toggles the top priority flag of {@code task}.
      */
+    // Task list context menu (right-click on a task): one shared menu, acting on contextMenuTask
+    private final javafx.scene.control.ContextMenu taskContextMenu = new javafx.scene.control.ContextMenu();
+    private final javafx.scene.control.MenuItem moveToTopMenuItem = new javafx.scene.control.MenuItem("Move to top");
+    private final javafx.scene.control.MenuItem moveToBottomMenuItem = new javafx.scene.control.MenuItem("Move to bottom");
+    private Task contextMenuTask;
+
+    private void setupTaskContextMenu() {
+        moveToTopMenuItem.setOnAction(_ -> moveTask(contextMenuTask, true));
+        moveToBottomMenuItem.setOnAction(_ -> moveTask(contextMenuTask, false));
+        taskContextMenu.getItems().addAll(moveToTopMenuItem, moveToBottomMenuItem);
+        taskListView.setOnContextMenuRequested(this::onTaskListContextMenuRequested);
+    }
+
+    /**
+     * Shows the task context menu for the task under the mouse (or the selected task when opened with the
+     * keyboard). Nothing on an empty area of the list; the ★ button consumes the event (no menu).
+     */
+    private void onTaskListContextMenuRequested(javafx.scene.input.ContextMenuEvent event) {
+        Task task = null;
+        if (event.isKeyboardTrigger()) {
+            task = taskListView.getSelectionModel().getSelectedItem();
+        } else {
+            javafx.scene.Node node = event.getPickResult().getIntersectedNode();
+            while (node != null && node != taskListView && !(node instanceof TaskListCell)) {
+                node = node.getParent();
+            }
+            if (node instanceof TaskListCell cell && !cell.isEmpty()) {
+                task = cell.getItem();
+            }
+        }
+        taskContextMenu.hide();
+        if (task == null) {
+            return;
+        }
+        contextMenuTask = task;
+        taskListView.getSelectionModel().select(task);
+        // Same rule as drag & drop: the manual order can only be changed in "Manual order" mode
+        boolean manual = isManualOrder();
+        moveToTopMenuItem.setDisable(!manual);
+        moveToBottomMenuItem.setDisable(!manual);
+        taskContextMenu.show(taskListView, event.getScreenX(), event.getScreenY());
+        event.consume();
+    }
+
+    /** Moves {@code task} to the top/bottom of the manual order, then keeps it selected and scrolls to it. */
+    private void moveTask(Task task, boolean top) {
+        if (task == null || !isManualOrder()) {
+            return;
+        }
+        try {
+            if (top) {
+                taskService.moveToTop(task);
+            } else {
+                taskService.moveToBottom(task);
+            }
+        } catch (IllegalArgumentException e) {
+            log.error("Cannot move the task to the {}", top ? "top" : "bottom", e);
+            showPopup("Error", "Failed to move the task: " + e.getMessage());
+            return;
+        }
+        applyFilters();
+        if (taskListView.getItems().contains(task)) {
+            taskListView.getSelectionModel().select(task);
+            taskListView.scrollTo(task);
+        }
+    }
+
     private void toggleTopPriority(Task task) {
         task.setTopPriority(!task.isTopPriority());
         if (focusTopPrioritiesCheckbox.isSelected()) {
@@ -1392,6 +1460,8 @@ private void showPopup(String title, String message) {
             // Keep the mouse events away from the cell: no selection change, no timer start on a
             // double-click, no drag & drop (the button's own handlers still run)
             priorityButton.addEventHandler(javafx.scene.input.MouseEvent.ANY, javafx.event.Event::consume);
+            // ... and no task context menu from the star
+            priorityButton.addEventHandler(javafx.scene.input.ContextMenuEvent.ANY, javafx.event.Event::consume);
 
             // Layout configuration
             label.setMaxWidth(Double.MAX_VALUE);
@@ -1431,7 +1501,9 @@ private void showPopup(String title, String message) {
             hbox.prefWidthProperty().bind(widthProperty().subtract(40));
 
             setOnMouseClicked(event -> {
-                if (event.getClickCount() == 2 && getItem() != null) {
+                // Primary button only: a (double) right-click opens the context menu, never starts the timer
+                if (event.getButton() == javafx.scene.input.MouseButton.PRIMARY
+                        && event.getClickCount() == 2 && getItem() != null) {
                     Task task = getItem();
                     // Clear the tag when task is double-clicked to start timing
                     if ("new_auto".equals(task.getTag())) {
@@ -1471,7 +1543,8 @@ private void showPopup(String title, String message) {
 
             setOnDragDetected(event -> {
                 Task toMove = taskListView.getSelectionModel().getSelectedItem();
-                if (toMove == null || !isManualOrder()) {
+                if (toMove == null || !isManualOrder()
+                        || event.getButton() != javafx.scene.input.MouseButton.PRIMARY) {
                     return;
                 }
                 javafx.scene.input.Dragboard dragboard = startDragAndDrop(javafx.scene.input.TransferMode.MOVE);
@@ -1524,7 +1597,8 @@ private void showPopup(String title, String message) {
 
                         taskService.updateOrder(taskService.getTasks());
                         applyFilters();
-                        taskListView.getSelectionModel().select(getIndex());
+                        // Select the task itself, not the drop index: updateOrder may move it (DONE tasks at the end)
+                        taskListView.getSelectionModel().select(toMove.get());
                         success = true;
 
                     }
