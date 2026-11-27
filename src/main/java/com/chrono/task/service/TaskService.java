@@ -154,8 +154,9 @@ public class TaskService {
     }
 
     /**
-     * Moves {@code task} to the first position of the manual order (master list, filters ignored) and renumbers
-     * the {@code order} fields. No change if it is already first.
+     * Moves {@code task} to the first position of the manual order (master list, filters ignored) and recomputes
+     * the order with {@link #updateOrder} (DONE tasks stay at the end: a DONE task goes first among the DONE ones).
+     * No change if it is already first.
      *
      * @throws IllegalArgumentException if {@code task} is {@code null} or not in the task list
      */
@@ -164,8 +165,9 @@ public class TaskService {
     }
 
     /**
-     * Moves {@code task} to the last position of the manual order (master list, filters ignored) and renumbers
-     * the {@code order} fields. No change if it is already last.
+     * Moves {@code task} to the last position of the manual order (master list, filters ignored) and recomputes
+     * the order with {@link #updateOrder} (DONE tasks stay at the end: a non-DONE task goes last before them).
+     * No change if it is already last.
      *
      * @throws IllegalArgumentException if {@code task} is {@code null} or not in the task list
      */
@@ -186,27 +188,39 @@ public class TaskService {
             throw new IllegalArgumentException("Task not found in the task list: "
                     + (task == null ? "null" : "'" + task.getDescription() + "'"));
         }
-        int target = top ? 0 : tasks.size() - 1;
-        if (index == target) {
-            return;
-        }
         List<Task> newOrder = new java.util.ArrayList<>(tasks);
         newOrder.remove(index);
         newOrder.add(top ? 0 : newOrder.size(), task);
-        // Single change event on the observable list
-        tasks.setAll(newOrder);
-        updateOrder(tasks);
+        updateOrder(newOrder);
     }
 
+    /**
+     * Recomputes the manual order from {@code newOrder}: DONE tasks are moved to the end (stable: the relative
+     * order is kept inside both groups), then the {@code order} fields are renumbered 0..n-1 and the master list
+     * is updated (single change event, only if the order changed).
+     */
     public void updateOrder(List<Task> newOrder) {
-        for (int i = 0; i < newOrder.size(); i++) {
-            newOrder.get(i).setOrder(i);
+        List<Task> ordered = new java.util.ArrayList<>(newOrder.size());
+        newOrder.stream().filter(t -> t.getStatus() != TaskStatus.DONE).forEach(ordered::add);
+        newOrder.stream().filter(t -> t.getStatus() == TaskStatus.DONE).forEach(ordered::add);
+        for (int i = 0; i < ordered.size(); i++) {
+            ordered.get(i).setOrder(i);
         }
-        // If the list is the same instance, we don't need to setAll (it's already
-        // modified in place if it's the ObservableList)
-        if (newOrder != tasks) {
-            tasks.setAll(newOrder); // Update observable list
+        if (!sameInstances(ordered, tasks)) {
+            tasks.setAll(ordered);
         }
+    }
+
+    private static boolean sameInstances(List<Task> a, List<Task> b) {
+        if (a.size() != b.size()) {
+            return false;
+        }
+        for (int i = 0; i < a.size(); i++) {
+            if (a.get(i) != b.get(i)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     public void saveSafely() {

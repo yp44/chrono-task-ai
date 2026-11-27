@@ -254,15 +254,54 @@ class TaskServiceTest {
 
     @Test
     void testMoveIgnoresFilters() {
-        Task a = service.createTask("A");
-        Task done = service.createTask("Done");
-        done.setStatus(com.chrono.task.model.TaskStatus.DONE);
-        Task c = service.createTask("C");
+        Task a = service.createTask("Alpha");
+        Task hidden = service.createTask("Beta");
+        Task c = service.createTask("Alpha 2");
 
-        // "Done" is hidden by the filter but still counts: the task goes after it
+        // "Beta" is hidden by the text filter but still counts: the task goes after it
         service.moveToBottom(a);
-        assertEquals(List.of(done, c, a), service.getTasks());
-        assertEquals(List.of(c, a), service.filter("", false));
+        assertEquals(List.of(hidden, c, a), service.getTasks());
+        assertEquals(List.of(c, a), service.filter("alpha", true));
+    }
+
+    @Test
+    void testReorderPutsDoneTasksAtTheEnd() {
+        Task a = service.createTask("A");
+        Task done1 = service.createTask("Done 1");
+        Task b = service.createTask("B");
+        Task done2 = service.createTask("Done 2");
+        Task c = service.createTask("C");
+        done1.setStatus(com.chrono.task.model.TaskStatus.DONE);
+        done2.setStatus(com.chrono.task.model.TaskStatus.DONE);
+
+        // Like a drag & drop: done2 dropped at the top, relative order kept in both groups
+        service.updateOrder(List.of(done2, a, done1, b, c));
+
+        assertEquals(List.of(a, b, c, done2, done1), service.getTasks());
+        assertOrderFieldsMatchPositions();
+    }
+
+    @Test
+    void testMoveKeepsDoneTasksAtTheEnd() {
+        Task a = service.createTask("A");
+        Task done1 = service.createTask("Done 1");
+        Task b = service.createTask("B");
+        Task done2 = service.createTask("Done 2");
+        done1.setStatus(com.chrono.task.model.TaskStatus.DONE);
+        done2.setStatus(com.chrono.task.model.TaskStatus.DONE);
+
+        // Non-DONE task to the bottom: last before the DONE tasks
+        service.moveToBottom(a);
+        assertEquals(List.of(b, a, done1, done2), service.getTasks());
+
+        // DONE task to the top: first among the DONE tasks
+        service.moveToTop(done2);
+        assertEquals(List.of(b, a, done2, done1), service.getTasks());
+
+        // DONE task to the bottom: last
+        service.moveToBottom(done2);
+        assertEquals(List.of(b, a, done1, done2), service.getTasks());
+        assertOrderFieldsMatchPositions();
     }
 
     @Test

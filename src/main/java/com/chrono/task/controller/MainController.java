@@ -1597,7 +1597,8 @@ private void showPopup(String title, String message) {
 
                         taskService.updateOrder(taskService.getTasks());
                         applyFilters();
-                        taskListView.getSelectionModel().select(getIndex());
+                        // Select the task itself, not the drop index: updateOrder may move it (DONE tasks at the end)
+                        taskListView.getSelectionModel().select(toMove.get());
                         success = true;
 
                     }
