@@ -227,6 +227,81 @@ class TaskServiceTest {
     }
 
     @Test
+    void testMoveToTop() {
+        Task a = service.createTask("A");
+        Task b = service.createTask("B");
+        Task c = service.createTask("C");
+        Task d = service.createTask("D");
+
+        service.moveToTop(c);
+
+        assertEquals(List.of(c, a, b, d), service.getTasks());
+        assertOrderFieldsMatchPositions();
+    }
+
+    @Test
+    void testMoveToBottom() {
+        Task a = service.createTask("A");
+        Task b = service.createTask("B");
+        Task c = service.createTask("C");
+        Task d = service.createTask("D");
+
+        service.moveToBottom(b);
+
+        assertEquals(List.of(a, c, d, b), service.getTasks());
+        assertOrderFieldsMatchPositions();
+    }
+
+    @Test
+    void testMoveIgnoresFilters() {
+        Task a = service.createTask("A");
+        Task done = service.createTask("Done");
+        done.setStatus(com.chrono.task.model.TaskStatus.DONE);
+        Task c = service.createTask("C");
+
+        // "Done" is hidden by the filter but still counts: the task goes after it
+        service.moveToBottom(a);
+        assertEquals(List.of(done, c, a), service.getTasks());
+        assertEquals(List.of(c, a), service.filter("", false));
+    }
+
+    @Test
+    void testMoveAlreadyInPlaceChangesNothing() {
+        Task a = service.createTask("A");
+        Task b = service.createTask("B");
+        Task c = service.createTask("C");
+
+        service.moveToTop(a);
+        assertEquals(List.of(a, b, c), service.getTasks());
+        service.moveToBottom(c);
+        assertEquals(List.of(a, b, c), service.getTasks());
+        assertOrderFieldsMatchPositions();
+    }
+
+    @Test
+    void testMoveUnknownTaskThrows() {
+        Task a = service.createTask("A");
+        Task b = service.createTask("B");
+        // Same id/description as "A" but another instance, not in the list
+        Task stranger = Task.builder().id(a.getId()).description(a.getDescription()).build();
+
+        assertThrows(IllegalArgumentException.class, () -> service.moveToTop(stranger));
+        assertThrows(IllegalArgumentException.class, () -> service.moveToBottom(stranger));
+        assertThrows(IllegalArgumentException.class, () -> service.moveToTop(null));
+        assertThrows(IllegalArgumentException.class, () -> service.moveToBottom(null));
+
+        assertSame(a, service.getTasks().get(0));
+        assertSame(b, service.getTasks().get(1));
+        assertEquals(2, service.getTasks().size());
+    }
+
+    private void assertOrderFieldsMatchPositions() {
+        for (int i = 0; i < service.getTasks().size(); i++) {
+            assertEquals(i, service.getTasks().get(i).getOrder());
+        }
+    }
+
+    @Test
     void testSlackUrl() {
         Task t = service.createTask("Slack Task");
         service.updateTaskSlackUrl(t, "https://slack.com/archives/C12345");

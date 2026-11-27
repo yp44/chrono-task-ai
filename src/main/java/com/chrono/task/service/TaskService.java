@@ -153,6 +153,51 @@ public class TaskService {
         return sorted;
     }
 
+    /**
+     * Moves {@code task} to the first position of the manual order (master list, filters ignored) and renumbers
+     * the {@code order} fields. No change if it is already first.
+     *
+     * @throws IllegalArgumentException if {@code task} is {@code null} or not in the task list
+     */
+    public void moveToTop(Task task) {
+        moveTo(task, true);
+    }
+
+    /**
+     * Moves {@code task} to the last position of the manual order (master list, filters ignored) and renumbers
+     * the {@code order} fields. No change if it is already last.
+     *
+     * @throws IllegalArgumentException if {@code task} is {@code null} or not in the task list
+     */
+    public void moveToBottom(Task task) {
+        moveTo(task, false);
+    }
+
+    private void moveTo(Task task, boolean top) {
+        // Identity lookup: Task is a Lombok @Data (value-based equals)
+        int index = -1;
+        for (int i = 0; i < tasks.size(); i++) {
+            if (tasks.get(i) == task) {
+                index = i;
+                break;
+            }
+        }
+        if (task == null || index < 0) {
+            throw new IllegalArgumentException("Task not found in the task list: "
+                    + (task == null ? "null" : "'" + task.getDescription() + "'"));
+        }
+        int target = top ? 0 : tasks.size() - 1;
+        if (index == target) {
+            return;
+        }
+        List<Task> newOrder = new java.util.ArrayList<>(tasks);
+        newOrder.remove(index);
+        newOrder.add(top ? 0 : newOrder.size(), task);
+        // Single change event on the observable list
+        tasks.setAll(newOrder);
+        updateOrder(tasks);
+    }
+
     public void updateOrder(List<Task> newOrder) {
         for (int i = 0; i < newOrder.size(); i++) {
             newOrder.get(i).setOrder(i);
